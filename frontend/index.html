@@ -1,0 +1,179 @@
+<!doctype html>
+<html lang="fa" dir="rtl">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>VPN Panel Pro — Neo UI</title>
+    <meta name="color-scheme" content="dark light">
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script crossorigin src="https://unpkg.com/react@18/umd/react.development.js"></script>
+    <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
+    <script crossorigin src="https://unpkg.com/framer-motion@11.2.6/dist/framer-motion.umd.js"></script>
+    <script crossorigin src="https://unpkg.com/recharts/umd/Recharts.min.js"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Vazirmatn:wght@300;400;600;800&display=swap" rel="stylesheet">
+    <script>
+      tailwind.config = {
+        theme: {
+          extend: {
+            fontFamily: { sans: ['Vazirmatn','ui-sans-serif','system-ui'] },
+            colors: {
+              brand: { 500: '#7C3AED', 600: '#6D28D9', 700: '#5B21B6' },
+              neon: { 500: '#22D3EE', 600: '#06B6D4' }
+            }
+          }
+        }
+      };
+    </script>
+    <style>
+      :root { --bg1:#0b1020; --bg2:#111827; --glass: rgba(255,255,255,0.08); }
+      body {
+        background: radial-gradient(1200px 800px at 80% -10%, rgba(34,211,238,.15), rgba(124,58,237,.12) 35%, transparent 60%),
+                    radial-gradient(900px 600px at -10% 110%, rgba(124,58,237,.18), transparent 60%),
+                    linear-gradient(180deg, var(--bg1), var(--bg2));
+      }
+      .glass { background: var(--glass); backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px); border: 1px solid rgba(255,255,255,0.08); }
+      .btn { transition: transform .15s ease, box-shadow .2s ease; }
+      .btn:hover { transform: translateY(-1px); }
+      .shine { position: relative; overflow: hidden; }
+      .shine:after {
+        content:''; position:absolute; inset:auto -40% 0 -40%;
+        top:-100%; height: 200%;
+        background: linear-gradient(120deg, transparent 30%, rgba(255,255,255,.12) 50%, transparent 70%);
+        transform: rotate(20deg);
+        animation: shine 5s linear infinite;
+      }
+      @keyframes shine { to { top: 120%; } }
+    </style>
+  </head>
+  <body class="min-h-screen text-slate-100">
+    <div id="root"></div>
+    <script>
+      const { useState, useEffect } = React;
+      const { motion, AnimatePresence } = window['framer-motion'];
+      const Recharts = window['Recharts'];
+      const API = "/api";
+      function IconShield(props){return React.createElement('svg',{...props,viewBox:'0 0 24 24',fill:'none',stroke:'currentColor',strokeWidth:1.5},React.createElement('path',{d:'M12 3l7 4v5c0 5-3.5 7.5-7 9-3.5-1.5-7-4-7-9V7l7-4z'}))}
+      function IconWifi(props){return React.createElement('svg',{...props,viewBox:'0 0 24 24',fill:'none',stroke:'currentColor',strokeWidth:1.5},React.createElement('path',{d:'M2 8a16 16 0 0 1 20 0M5 12a11 11 0 0 1 14 0M8.5 15.5a6 6 0 0 1 7 0M12 19h.01'}))}
+      const Glow = ({children}) => (
+        React.createElement('div',{className:'relative'},
+          React.createElement('div',{className:'absolute -inset-1 rounded-3xl blur-2xl opacity-40',style:{background:'linear-gradient(90deg,#06B6D4,#7C3AED)'}}),
+          React.createElement('div',{className:'relative'},children)
+        )
+      );
+      function useAuth(){
+        const [access,setAccess]=useState(null); const [refresh,setRefresh]=useState(null);
+        useEffect(()=>{ const a=localStorage.getItem('access'); const r=localStorage.getItem('refresh'); if(a) setAccess(a); if(r) setRefresh(r); },[]);
+        useEffect(()=>{ access?localStorage.setItem('access',access):localStorage.removeItem('access'); },[access]);
+        useEffect(()=>{ refresh?localStorage.setItem('refresh',refresh):localStorage.removeItem('refresh'); },[refresh]);
+        const authHeader = ()=> access? {Authorization:'Bearer '+access} : {};
+        const tryRefresh = async ()=>{
+          if(!refresh) return false;
+          const res = await fetch(API+'/auth/refresh',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({refresh_token:refresh})});
+          if(res.ok){ const data=await res.json(); setAccess(data.access_token); setRefresh(data.refresh_token); return true; }
+          return false;
+        };
+        return {access,refresh,setAccess,setRefresh,authHeader,tryRefresh};
+      }
+      function App(){
+        const {access,refresh,setAccess,setRefresh,authHeader,tryRefresh} = useAuth();
+        const [email,setEmail]=useState(''); const [password,setPassword]=useState('');
+        const [plans,setPlans]=useState([]); const [subs,setSubs]=useState([]);
+        const [provider,setProvider]=useState('marzban'); const [tab,setTab]=useState('dashboard');
+        const action = async (exec)=>{ let res = await exec(); if(res.status===401 && await tryRefresh()) res = await exec(); if(!res.ok){ const e = await res.json().catch(()=>({detail:'خطا'})); throw new Error(e.detail||'خطا'); } return res.json(); };
+        const signup = async ()=>{ const data = await action(()=>fetch(API+'/auth/signup',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({email,password})})); setAccess(data.access_token); setRefresh(data.refresh_token); };
+        const login = async ()=>{ const data = await action(()=>fetch(API+'/auth/login',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({email,password})})); setAccess(data.access_token); setRefresh(data.refresh_token); };
+        const logout = async ()=>{ if(!refresh) return; await fetch(API+'/auth/logout',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({refresh_token:refresh})}); setAccess(null); setRefresh(null); };
+        const loadPlans = async ()=>{ const res = await fetch(API+'/catalog/plans'); setPlans(await res.json()); };
+        const loadSubs = async ()=>{ if(!access) return setSubs([]); const data = await action(()=>fetch(API+'/subscriptions',{headers:{...authHeader()}})); setSubs(data); };
+        const buy = async (pid)=>{ await action(()=>fetch(API+'/orders',{method:'POST',headers:{'Content-Type':'application/json',...authHeader()},body:JSON.stringify({plan_id:pid})})); await loadSubs(); };
+        const provision = async (sid)=>{ await action(()=>fetch(API+'/admin/provision',{method:'POST',headers:{'Content-Type':'application/json',...authHeader()},body:JSON.stringify({subscription_id:sid,provider})})); await loadSubs(); };
+        React.useEffect(()=>{ loadPlans(); },[]); React.useEffect(()=>{ loadSubs(); },[access]);
+        const usageData = (subs||[]).map(s=>({name:'S'+s.id, used:s.used_gb||0, quota:s.quota_gb||0}));
+        return React.createElement('div',{className:'px-4 py-8 max-w-6xl mx-auto'},
+          React.createElement('header',{className:'flex items-center justify-between mb-6'},
+            React.createElement('div',{className:'flex items-center gap-3'},
+              React.createElement(Glow,null,React.createElement('div',{className:'glass rounded-2xl p-2 shine'},React.createElement(IconShield,{className:'w-8 h-8 text-neon-500'}))),
+              React.createElement('div',null,React.createElement('h1',{className:'text-2xl font-extrabold tracking-tight'},'VPN Panel Pro'),React.createElement('p',{className:'text-sm text-slate-300 -mt-1'},'داشبورد مدیریت اکانت و خرید اشتراک'))
+            ),
+            React.createElement('div',{className:'flex items-center gap-2'}, access && React.createElement('button',{onClick:logout,className:'btn glass rounded-xl px-4 py-2 text-sm'},'خروج'), !access && React.createElement('span',{className:'text-xs text-slate-400'},'وارد نشده‌اید'))
+          ),
+          React.createElement('div',{className:'flex gap-2 mb-6'}, ['dashboard','plans','account'].map(t=>React.createElement('button',{key:t,onClick:()=>setTab(t),className:`btn rounded-xl px-4 py-2 text-sm ${tab===t?'bg-brand-600 text-white':'glass text-slate-200'}`}, t==='dashboard'?'داشبورد':t==='plans'?'پلن‌ها':'اکانت'))),
+          React.createElement(window['framer-motion'].AnimatePresence,null,
+            tab==='account' && React.createElement(window['framer-motion'].motion.div,{key:'acc',initial:{opacity:0,y:10},animate:{opacity:1,y:0},exit:{opacity:0,y:-10},className:'grid md:grid-cols-2 gap-4'},
+              React.createElement('div',{className:'glass rounded-2xl p-5'},
+                React.createElement('h2',{className:'font-bold mb-4 flex items-center gap-2'},React.createElement(IconShield,{className:'w-5 h-5'}),'ورود / ثبت‌نام'),
+                React.createElement('div',{className:'space-y-3'},
+                  React.createElement('input',{className:'w-full bg-transparent glass border border-white/10 rounded-xl p-3 outline-none',placeholder:'ایمیل',value:email,onChange:e=>setEmail(e.target.value)}),
+                  React.createElement('input',{type:'password',className:'w-full bg-transparent glass border border-white/10 rounded-xl p-3 outline-none',placeholder:'رمز عبور',value:password,onChange:e=>setPassword(e.target.value)}),
+                  React.createElement('div',{className:'flex gap-2'},
+                    React.createElement('button',{onClick:signup,className:'btn rounded-xl bg-brand-600 px-4 py-2'},'ثبت‌نام'),
+                    React.createElement('button',{onClick:login,className:'btn rounded-xl bg-slate-800 px-4 py-2'},'ورود')
+                  ),
+                  React.createElement('div',{className:'text-xs text-slate-400'}, access?'وارد شده‌اید':'برای خرید باید وارد شوید')
+                )
+              ),
+              React.createElement('div',{className:'glass rounded-2xl p-5'},
+                React.createElement('h2',{className:'font-bold mb-4 flex items-center gap-2'},React.createElement(IconWifi,{className:'w-5 h-5'}),'اشتراک‌های من'),
+                React.createElement('div',{className:'space-y-3'},
+                  subs.length===0 && React.createElement('div',{className:'text-sm text-slate-400'},'اشتراکی ندارید.'),
+                  subs.map(s=>React.createElement('div',{key:s.id,className:'flex items-center justify-between glass rounded-xl p-3'},
+                    React.createElement('div',null,
+                      React.createElement('div',{className:'font-semibold'},`ID: ${s.id} | ${s.provider}`),
+                      React.createElement('div',{className:'text-xs text-slate-400'},`حجم: ${s.used_gb}/${s.quota_gb} GB | انقضا: ${s.expires_at || '-'}`)
+                    ),
+                    React.createElement('div',{className:'flex items-center gap-2'},
+                      React.createElement('select',{value:provider,onChange:e=>setProvider(e.target.value),className:'glass rounded-lg px-2 py-1 text-sm'},[
+                        React.createElement('option',{key:'marzban',value:'marzban'},'مرزبان'),
+                        React.createElement('option',{key:'sanaei',value:'sanaei'},'سنایی')
+                      ]),
+                      React.createElement('button',{onClick:()=>provision(s.id),className:'btn rounded-lg bg-neon-600 px-3 py-1.5 text-sm'},'Provision')
+                    )
+                  ))
+                )
+              )
+            ),
+            tab==='plans' && React.createElement(window['framer-motion'].motion.div,{key:'plans',initial:{opacity:0,y:10},animate:{opacity:1,y:0},exit:{opacity:0,y:-10},className:'grid md:grid-cols-3 gap-4'},
+              plans.map(p=>React.createElement(window['framer-motion'].motion.div,{key:p.id,whileHover:{y:-4},className:'shine glass rounded-2xl p-5 flex flex-col justify-between'},
+                React.createElement('div',null,
+                  React.createElement('div',{className:'text-sm text-slate-300'},'پلن'),
+                  React.createElement('h3',{className:'text-xl font-extrabold mt-1'},p.name),
+                  React.createElement('div',{className:'text-sm text-slate-400 mt-2'},`مدت: ${p.duration_days} روز | حجم: ${p.quota_gb}GB`)
+                ),
+                React.createElement('div',{className:'mt-6 flex items-center justify-between'},
+                  React.createElement('div',{className:'text-2xl font-extrabold'},p.price,' $'),
+                  React.createElement('button',{onClick:()=>buy(p.id),className:'btn rounded-xl bg-brand-600 px-4 py-2'},'خرید')
+                )
+              ))
+            ),
+            tab==='dashboard' && React.createElement(window['framer-motion'].motion.div,{key:'dash',initial:{opacity:0,y:10},animate:{opacity:1,y:0},exit:{opacity:0,y:-10}},
+              React.createElement('div',{className:'grid md:grid-cols-3 gap-4 mb-6'},
+                React.createElement('div',{className:'glass rounded-2xl p-5'},React.createElement('div',{className:'text-slate-300 text-sm'},'وضعیت'),React.createElement('div',{className:'text-2xl font-extrabold mt-2'},'ایمن ✔')),
+                React.createElement('div',{className:'glass rounded-2xl p-5'},React.createElement('div',{className:'text-slate-300 text-sm'},'اشتراک‌ها'),React.createElement('div',{className:'text-2xl font-extrabold mt-2'},subs.length)),
+                React.createElement('div',{className:'glass rounded-2xl p-5'},React.createElement('div',{className:'text-slate-300 text-sm'},'پلن‌ها'),React.createElement('div',{className:'text-2xl font-extrabold mt-2'},plans.length))
+              ),
+              React.createElement('div',{className:'glass rounded-2xl p-5'},
+                React.createElement('div',{className:'flex items-center justify-between mb-4'},
+                  React.createElement('h2',{className:'font-bold'},'نمودار مصرف (نمونه)'),
+                  React.createElement('div',{className:'text-xs text-slate-400'},'از داده‌های اشتراک‌ها ساخته می‌شود')
+                ),
+                React.createElement('div',{className:'h-64 w-full'},
+                  React.createElement(Recharts.ResponsiveContainer,{width:'100%',height:'100%'},
+                    React.createElement(Recharts.ComposedChart,{data:usageData,margin:{top:10,right:10,left:0,bottom:0}},
+                      React.createElement(Recharts.CartesianGrid,{strokeDasharray:'3 3',stroke:'rgba(255,255,255,.1)'}),
+                      React.createElement(Recharts.XAxis,{dataKey:'name',tick:{fill:'#cbd5e1'}}),
+                      React.createElement(Recharts.YAxis,{tick:{fill:'#cbd5e1'}}),
+                      React.createElement(Recharts.Tooltip,{}),
+                      React.createElement(Recharts.Area,{type:'monotone', dataKey:'quota', fill:'rgba(124,58,237,.25)', stroke:'#7C3AED'}),
+                      React.createElement(Recharts.Line,{type:'monotone', dataKey:'used', stroke:'#22D3EE', strokeWidth:2})
+                    )
+                  )
+                )
+              )
+            )
+          )
+        );
+      }
+      ReactDOM.createRoot(document.getElementById('root')).render(React.createElement(App));
+    </script>
+  </body>
+</html>
